@@ -1,7 +1,7 @@
 use crate::{
     memory::Memory,
     multi_iter::MultiIter,
-    runtime::{inc_performance_counter, performance_counter, print},
+    runtime::{inc_performance_counter, performance_counter, print, time},
     types::{Address, AddressUtxo, AddressUtxoRange, Slicing, TxOut, Utxo},
 };
 use bitcoin::{Script, TxOut as BitcoinTxOut};
@@ -115,6 +115,9 @@ impl UtxoSet {
         } = self.ingesting_block.take()?;
 
         stats.num_rounds += 1;
+        // Track the starting tx index for this round to compute txs processed.
+        stats.round_start_tx_idx = next_tx_idx;
+
         for (tx_idx, tx) in block.txdata().iter().enumerate().skip(next_tx_idx) {
             if let Slicing::Paused((next_input_idx, next_output_idx)) = self.ingest_tx_with_slicing(
                 tx,
@@ -124,6 +127,8 @@ impl UtxoSet {
                 &mut stats,
             ) {
                 stats.ins_total += performance_counter() - ins_start;
+                // Track how many transactions were processed in this round.
+                stats.txs_processed_last_round = (tx_idx - stats.round_start_tx_idx) as u32;
 
                 // Getting close to the the instructions limit. Pause execution.
                 self.ingesting_block = Some(IngestingBlock {
@@ -144,6 +149,11 @@ impl UtxoSet {
         }
 
         stats.ins_total += performance_counter() - ins_start;
+        // Track final round's transactions processed.
+        stats.txs_processed_last_round = (block.txdata().len() - stats.round_start_tx_idx) as u32;
+        // Set the finish time.
+        stats.finished_at_nanos = time();
+
         print(&format!(
             "[INSTRUCTION COUNT] Ingest Block {}: {:?}",
             self.next_height, stats
@@ -464,12 +474,14 @@ pub struct IngestingBlock {
 
 impl IngestingBlock {
     pub fn new(block: Block) -> Self {
+        let mut stats = BlockIngestionStats::default();
+        stats.started_at_nanos = time();
         Self {
             block,
             next_tx_idx: 0,
             next_input_idx: 0,
             next_output_idx: 0,
-            stats: BlockIngestionStats::default(),
+            stats,
             utxos_delta: UtxosDelta::default(),
         }
     }
@@ -493,7 +505,7 @@ impl IngestingBlock {
 }
 
 // Various profiling stats for tracking the performance of block ingestion.
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Eq, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, Default)]
 pub struct BlockIngestionStats {
     // The number of rounds it took to ingest the block.
     num_rounds: u32,
@@ -512,11 +524,41 @@ pub struct BlockIngestionStats {
 
     // The number of instructions used to insert new utxos.
     ins_insert_utxos: u64,
+
+    // Timestamp (nanoseconds) when block ingestion started.
+    #[serde(default)]
+    started_at_nanos: u64,
+
+    // Timestamp (nanoseconds) when block ingestion finished.
+    #[serde(default)]
+    finished_at_nanos: u64,
+
+    // Number of transactions processed in the last round.
+    #[serde(default)]
+    txs_processed_last_round: u32,
+
+    // The starting transaction index for the current round.
+    #[serde(default)]
+    round_start_tx_idx: usize,
 }
 
 impl BlockIngestionStats {
     pub fn get_num_rounds(&self) -> u32 {
         self.num_rounds
+    }
+
+    /// Returns the duration in seconds (if timing was captured).
+    pub fn get_duration_seconds(&self) -> Option<f64> {
+        if self.started_at_nanos > 0 && self.finished_at_nanos >= self.started_at_nanos {
+            Some((self.finished_at_nanos - self.started_at_nanos) as f64 / 1_000_000_000.0)
+        } else {
+            None
+        }
+    }
+
+    /// Returns the number of transactions processed in the last round.
+    pub fn get_txs_processed_last_round(&self) -> u32 {
+        self.txs_processed_last_round
     }
 
     pub fn get_instruction_labels_and_values(&self) -> Vec<((&str, &str), u64)> {
@@ -533,6 +575,19 @@ impl BlockIngestionStats {
             (("instruction_count", "txids"), self.ins_txids),
             (("instruction_count", "insert_utxos"), self.ins_insert_utxos),
         ]
+    }
+}
+
+// Custom PartialEq implementation that only compares the original core fields
+// (ignoring the new timing/metrics fields for backward compatibility with tests).
+impl PartialEq for BlockIngestionStats {
+    fn eq(&self, other: &Self) -> bool {
+        self.num_rounds == other.num_rounds
+            && self.ins_total == other.ins_total
+            && self.ins_remove_inputs == other.ins_remove_inputs
+            && self.ins_insert_outputs == other.ins_insert_outputs
+            && self.ins_txids == other.ins_txids
+            && self.ins_insert_utxos == other.ins_insert_utxos
     }
 }
 

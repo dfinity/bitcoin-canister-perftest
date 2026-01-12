@@ -83,6 +83,11 @@ impl BlockHeaderStore {
             .range(heights)
             .map(move |entry| self.block_headers.get(&entry.value()).unwrap())
     }
+
+    /// Returns the number of block headers stored.
+    pub fn len(&self) -> u64 {
+        self.block_headers.len()
+    }
 }
 
 fn deserialize_block_header(block_header_blob: BlockHeaderBlob) -> Header {

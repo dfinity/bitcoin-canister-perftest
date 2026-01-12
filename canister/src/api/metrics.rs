@@ -62,6 +62,21 @@ fn encode_metrics(w: &mut MetricsEncoder<Vec<u8>>) -> std::io::Result<()> {
             state.utxos.address_utxos_len() as f64,
             "The number of UTXOs that are owned by supported addresses.",
         )?;
+        w.encode_gauge(
+            "balances_length",
+            state.utxos.balances_len() as f64,
+            "The number of addresses with a non-zero balance.",
+        )?;
+        w.encode_gauge(
+            "stable_block_headers_length",
+            state.stable_block_headers.len() as f64,
+            "The number of stable block headers stored.",
+        )?;
+        w.encode_gauge(
+            "next_block_headers_length",
+            state.unstable_blocks.next_block_headers_len() as f64,
+            "The number of next block headers pending to be received.",
+        )?;
 
         // Unstable blocks and stability threshold
         w.encode_gauge(
@@ -237,6 +252,61 @@ fn encode_metrics(w: &mut MetricsEncoder<Vec<u8>>) -> std::io::Result<()> {
             &stats.get_size_metrics(),
         )?;
 
+        // Endpoint metrics split by ingestion state (using labels)
+        encode_labeled_instruction_histogram(w, &state.metrics.get_utxos_by_ingestion)?;
+        encode_labeled_instruction_histogram(w, &state.metrics.get_balance_by_ingestion)?;
+        encode_labeled_instruction_histogram(w, &state.metrics.get_block_headers_by_ingestion)?;
+        encode_labeled_instruction_histogram(w, &state.metrics.get_fee_percentiles_by_ingestion)?;
+
+        // send_transaction metrics
+        encode_instruction_histogram(w, &state.metrics.send_transaction_instructions)?;
+        encode_histogram(w, &state.metrics.send_transaction_size)?;
+
+        // Heartbeat metrics
+        encode_instruction_histogram(w, &state.metrics.heartbeat_instructions)?;
+        encode_instruction_histogram(w, &state.metrics.heartbeat_ingest_stable_blocks)?;
+        encode_instruction_histogram(w, &state.metrics.heartbeat_fetch_blocks)?;
+        encode_instruction_histogram(w, &state.metrics.heartbeat_process_response)?;
+        encode_instruction_histogram(w, &state.metrics.heartbeat_fee_percentiles)?;
+
+        w.encode_counter(
+            "heartbeat_early_exit_ingestion",
+            state.metrics.heartbeat_early_exit_ingestion as f64,
+            "How often heartbeat exits early due to stable block ingestion.",
+        )?;
+        w.encode_counter(
+            "heartbeat_early_exit_fetch",
+            state.metrics.heartbeat_early_exit_fetch as f64,
+            "How often heartbeat exits early due to fetching blocks.",
+        )?;
+
+        // Block ingestion timing metrics
+        encode_histogram(w, &state.metrics.block_ingestion_duration)?;
+        encode_histogram(w, &state.metrics.block_ingestion_rounds)?;
+
+        w.encode_counter(
+            "ingestion_time_slice_count",
+            state.metrics.ingestion_time_slice_count as f64,
+            "How many times block ingestion was time-sliced.",
+        )?;
+
+        encode_histogram(w, &state.metrics.ingestion_txs_per_round)?;
+
+        // Request context metrics
+        encode_histogram(w, &state.metrics.get_utxos_utxos_returned)?;
+        encode_histogram(w, &state.metrics.get_utxos_unstable_blocks_applied)?;
+
+        // Ingestion state indicator
+        w.encode_gauge(
+            "is_ingesting_block",
+            if state.utxos.ingesting_block.is_some() {
+                1.0
+            } else {
+                0.0
+            },
+            "Is the canister currently ingesting a block? (1 = yes, 0 = no)",
+        )?;
+
         Ok(())
     })
 }
@@ -253,6 +323,21 @@ fn encode_histogram(
     h: &Histogram,
 ) -> io::Result<()> {
     metrics_encoder.encode_histogram(&h.name, h.buckets(), h.sum, &h.help)
+}
+
+fn encode_labeled_instruction_histogram(
+    metrics_encoder: &mut MetricsEncoder<Vec<u8>>,
+    h: &crate::metrics::LabeledInstructionHistogram,
+) -> io::Result<()> {
+    let mut builder = metrics_encoder.histogram_vec(&h.name, &h.help)?;
+    for (label_value, histogram) in h.iter() {
+        builder = builder.histogram(
+            &[(&h.label_name, label_value)],
+            histogram.buckets(),
+            histogram.sum,
+        )?;
+    }
+    Ok(())
 }
 
 fn encode_labeled_gauge(

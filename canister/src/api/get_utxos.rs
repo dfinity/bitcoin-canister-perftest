@@ -33,6 +33,12 @@ struct Stats {
 
     // The number of instructions used to build the utxos vec.
     ins_build_utxos_vec: u64,
+
+    // The number of UTXOs returned.
+    utxos_returned: usize,
+
+    // The number of unstable blocks applied.
+    unstable_blocks_applied: usize,
 }
 
 fn get_utxos_private(
@@ -79,6 +85,20 @@ fn get_utxos_private(
         s.metrics
             .get_utxos_build_utxos_vec
             .observe(stats.ins_build_utxos_vec);
+
+        // Record metrics split by ingestion state.
+        let is_ingesting = s.utxos.ingesting_block.is_some();
+        s.metrics
+            .get_utxos_by_ingestion
+            .observe(stats.ins_total, is_ingesting);
+
+        // Record request context metrics.
+        s.metrics
+            .get_utxos_utxos_returned
+            .observe(stats.utxos_returned as f64);
+        s.metrics
+            .get_utxos_unstable_blocks_applied
+            .observe(stats.unstable_blocks_applied as f64);
     });
 
     // Charge the fee based on the number of the instructions.
@@ -218,6 +238,7 @@ fn get_utxos_from_chain(
 
     // Apply unstable blocks to the UTXO set.
     let ins_start = performance_counter();
+    let mut unstable_blocks_applied = 0usize;
     for (i, block) in chain.into_chain().iter().enumerate() {
         if get_stability_count(&blocks_with_depths_by_heights[i], block.block_hash())
             < min_confirmations as i32
@@ -229,8 +250,10 @@ fn get_utxos_from_chain(
         tip_block_hash = block.block_hash();
         tip_block_height = state.utxos.next_height() + (i as u32);
         address_utxos.apply_block(block);
+        unstable_blocks_applied += 1;
     }
     stats.ins_apply_unstable_blocks = performance_counter() - ins_start;
+    stats.unstable_blocks_applied = unstable_blocks_applied;
 
     let ins_start = performance_counter();
 
@@ -270,6 +293,7 @@ fn get_utxos_from_chain(
 
     stats.ins_build_utxos_vec = performance_counter() - ins_start;
     stats.ins_total = performance_counter();
+    stats.utxos_returned = utxos.len();
 
     Ok((
         GetUtxosResponse {

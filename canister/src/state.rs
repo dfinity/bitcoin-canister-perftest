@@ -174,6 +174,36 @@ pub fn ingest_stable_blocks_into_utxoset(state: &mut State) -> bool {
         assert_eq!(popped_block.unwrap().block_hash(), &ingested_block_hash);
     }
 
+    // Helper to record block ingestion metrics when a block is fully ingested.
+    fn record_ingestion_metrics(state: &mut State, stats: &crate::utxo_set::BlockIngestionStats) {
+        state.metrics.block_ingestion_stats = stats.clone();
+
+        // Record the duration if timing is available.
+        if let Some(duration_secs) = stats.get_duration_seconds() {
+            state
+                .metrics
+                .block_ingestion_duration
+                .observe(duration_secs);
+        }
+
+        // Record the number of rounds.
+        state
+            .metrics
+            .block_ingestion_rounds
+            .observe(stats.get_num_rounds() as f64);
+
+        // Record transactions processed in the last round.
+        state
+            .metrics
+            .ingestion_txs_per_round
+            .observe(stats.get_txs_processed_last_round() as f64);
+    }
+
+    // Helper to record time-slice event when ingestion is paused.
+    fn record_time_slice(state: &mut State) {
+        state.metrics.ingestion_time_slice_count += 1;
+    }
+
     let prev_state = (
         state.utxos.next_height(),
         &state.utxos.ingesting_block.clone(),
@@ -186,9 +216,12 @@ pub fn ingest_stable_blocks_into_utxoset(state: &mut State) -> bool {
     print("Running ingest_block_continue...");
     match state.utxos.ingest_block_continue() {
         None => {} // No block to continue ingesting.
-        Some(Slicing::Paused(())) => return has_state_changed(state),
+        Some(Slicing::Paused(())) => {
+            record_time_slice(state);
+            return has_state_changed(state);
+        }
         Some(Slicing::Done((ingested_block_hash, stats))) => {
-            state.metrics.block_ingestion_stats = stats;
+            record_ingestion_metrics(state, &stats);
             pop_block(state, ingested_block_hash)
         }
     }
@@ -207,9 +240,12 @@ pub fn ingest_stable_blocks_into_utxoset(state: &mut State) -> bool {
             .insert_block(new_stable_block, state.utxos.next_height());
 
         match state.utxos.ingest_block(new_stable_block.clone()) {
-            Slicing::Paused(()) => return has_state_changed(state),
+            Slicing::Paused(()) => {
+                record_time_slice(state);
+                return has_state_changed(state);
+            }
             Slicing::Done((ingested_block_hash, stats)) => {
-                state.metrics.block_ingestion_stats = stats;
+                record_ingestion_metrics(state, &stats);
                 pop_block(state, ingested_block_hash)
             }
         }

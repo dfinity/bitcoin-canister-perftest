@@ -153,6 +153,12 @@ pub fn get_block_headers(
         s.metrics
             .get_block_headers_unstable_blocks
             .observe(stats.ins_build_block_headers_unstable_blocks);
+
+        // Record metrics split by ingestion state.
+        let is_ingesting = s.utxos.ingesting_block.is_some();
+        s.metrics
+            .get_block_headers_by_ingestion
+            .observe(stats.ins_total, is_ingesting);
     });
 
     // Charge the fee based on the number of the instructions.

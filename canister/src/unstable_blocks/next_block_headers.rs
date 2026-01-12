@@ -60,6 +60,11 @@ impl NextBlockHeaders {
     pub fn get_header(&self, hash: &BlockHash) -> Option<&Header> {
         self.hash_to_height_and_header.get(hash).map(|res| &res.1)
     }
+
+    /// Returns the number of next block headers stored.
+    pub fn len(&self) -> usize {
+        self.hash_to_height_and_header.len()
+    }
 }
 
 #[cfg(test)]

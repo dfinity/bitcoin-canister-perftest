@@ -95,6 +95,12 @@ fn get_balance_private(request: GetBalanceRequest) -> Result<Satoshi, GetBalance
         s.metrics
             .get_balance_apply_unstable_blocks
             .observe(stats.ins_apply_unstable_blocks);
+
+        // Record metrics split by ingestion state.
+        let is_ingesting = s.utxos.ingesting_block.is_some();
+        s.metrics
+            .get_balance_by_ingestion
+            .observe(stats.ins_total, is_ingesting);
     });
 
     // Print the number of instructions it took to process this request.
