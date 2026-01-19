@@ -16,8 +16,7 @@ pub async fn send_transaction(request: SendTransactionRequest) -> Result<(), Sen
     let transaction_size = request.transaction.len();
 
     charge_cycles(with_state(|s| {
-        s.fees.send_transaction_base
-            + s.fees.send_transaction_per_byte * transaction_size as u128
+        s.fees.send_transaction_base + s.fees.send_transaction_per_byte * transaction_size as u128
     }));
 
     // Decode the transaction as a sanity check that it's valid.
