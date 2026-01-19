@@ -474,8 +474,10 @@ pub struct IngestingBlock {
 
 impl IngestingBlock {
     pub fn new(block: Block) -> Self {
-        let mut stats = BlockIngestionStats::default();
-        stats.started_at_nanos = time();
+        let stats = BlockIngestionStats {
+            started_at_nanos: time(),
+            ..Default::default()
+        };
         Self {
             block,
             next_tx_idx: 0,
