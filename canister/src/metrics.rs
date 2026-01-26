@@ -122,7 +122,8 @@ pub struct Metrics {
     #[serde(default = "default_get_utxos_utxos_returned")]
     pub get_utxos_utxos_returned: Histogram,
 
-    /// Distribution of unstable blocks applied in get_utxos.
+    /// Number of unstable blocks traversed per get_utxos request (excludes blocks filtered by
+    /// `min_confirmations`).
     #[serde(default = "default_get_utxos_unstable_blocks_applied")]
     pub get_utxos_unstable_blocks_applied: Histogram,
 }
@@ -465,7 +466,7 @@ fn default_get_utxos_utxos_returned() -> Histogram {
 fn default_get_utxos_unstable_blocks_applied() -> Histogram {
     Histogram::new(
         "get_utxos_unstable_blocks_applied",
-        "Distribution of unstable blocks applied in get_utxos.",
+        "Number of unstable blocks traversed per get_utxos request (excludes blocks filtered by min_confirmations).",
         logarithmic_buckets(0, 3), // 1 to 1,000 blocks
     )
 }
