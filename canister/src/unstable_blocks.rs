@@ -195,6 +195,11 @@ impl UnstableBlocks {
         self.next_block_headers.get_max_height()
     }
 
+    /// Returns the number of next block headers stored.
+    pub fn next_block_headers_len(&self) -> usize {
+        self.next_block_headers.len()
+    }
+
     // Returns Header chain from the tip up to the first block
     // header outside the main chain in the reverse order.
     pub fn get_next_block_headers_chain_with_tip(

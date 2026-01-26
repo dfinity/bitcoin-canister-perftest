@@ -25,7 +25,13 @@ pub fn get_current_fee_percentiles() -> Vec<MillisatoshiPerByte> {
     with_state_mut(|s| {
         s.metrics
             .get_current_fee_percentiles_total
-            .observe(ins_total)
+            .observe(ins_total);
+
+        // Record metrics split by ingestion state.
+        let is_ingesting = s.utxos.ingesting_block.is_some();
+        s.metrics
+            .get_fee_percentiles_by_ingestion_state
+            .observe(ins_total, is_ingesting);
     });
     print(&format!(
         "[INSTRUCTION COUNT] get_current_fee_percentiles: {}",

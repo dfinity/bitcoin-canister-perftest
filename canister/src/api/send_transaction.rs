@@ -1,17 +1,22 @@
 use crate::{
-    charge_cycles, runtime, types::SendTransactionInternalRequest, verify_api_access,
-    verify_network, with_state, with_state_mut,
+    charge_cycles,
+    runtime::{self, performance_counter},
+    types::SendTransactionInternalRequest,
+    verify_api_access, verify_network, with_state, with_state_mut,
 };
 use bitcoin::{consensus::Decodable, Transaction};
 use ic_btc_interface::{SendTransactionError, SendTransactionRequest};
 
 pub async fn send_transaction(request: SendTransactionRequest) -> Result<(), SendTransactionError> {
+    let start = performance_counter();
+
     verify_api_access();
     verify_network(request.network.into());
 
+    let transaction_size = request.transaction.len();
+
     charge_cycles(with_state(|s| {
-        s.fees.send_transaction_base
-            + s.fees.send_transaction_per_byte * request.transaction.len() as u128
+        s.fees.send_transaction_base + s.fees.send_transaction_per_byte * transaction_size as u128
     }));
 
     // Decode the transaction as a sanity check that it's valid.
@@ -20,9 +25,12 @@ pub async fn send_transaction(request: SendTransactionRequest) -> Result<(), Sen
 
     runtime::print(&format!("[send_transaction] Tx ID: {}", tx.compute_txid()));
 
-    // Bump the counter for the number of (valid) requests received.
+    // Bump the counter for the number of (valid) requests received and record metrics.
     with_state_mut(|s| {
         s.metrics.send_transaction_count += 1;
+        s.metrics
+            .send_transaction_size
+            .observe(transaction_size as f64);
     });
 
     // Use the internal endpoint to send the transaction to the bitcoin network.
@@ -35,6 +43,14 @@ pub async fn send_transaction(request: SendTransactionRequest) -> Result<(), Sen
     )
     .await
     .expect("Sending transaction bitcoin network must succeed");
+
+    // Record instruction count.
+    with_state_mut(|s| {
+        s.metrics
+            .send_transaction_instructions
+            .observe(performance_counter() - start);
+    });
+
     Ok(())
 }
 
