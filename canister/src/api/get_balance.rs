@@ -99,7 +99,7 @@ fn get_balance_private(request: GetBalanceRequest) -> Result<Satoshi, GetBalance
         // Record metrics split by ingestion state.
         let is_ingesting = s.utxos.ingesting_block.is_some();
         s.metrics
-            .get_balance_by_ingestion
+            .get_balance_by_ingestion_state
             .observe(stats.ins_total, is_ingesting);
     });
 

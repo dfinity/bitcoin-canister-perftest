@@ -157,7 +157,7 @@ pub fn get_block_headers(
         // Record metrics split by ingestion state.
         let is_ingesting = s.utxos.ingesting_block.is_some();
         s.metrics
-            .get_block_headers_by_ingestion
+            .get_block_headers_by_ingestion_state
             .observe(stats.ins_total, is_ingesting);
     });
 

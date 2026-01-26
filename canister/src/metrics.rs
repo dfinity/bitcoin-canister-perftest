@@ -47,20 +47,20 @@ pub struct Metrics {
 
     // Endpoint metrics split by ingestion state (using labels)
     /// Instructions for get_utxos, labeled by ingestion state.
-    #[serde(default = "default_get_utxos_by_ingestion")]
-    pub get_utxos_by_ingestion: LabeledInstructionHistogram,
+    #[serde(default = "default_get_utxos_by_ingestion_state")]
+    pub get_utxos_by_ingestion_state: LabeledInstructionHistogram,
 
     /// Instructions for get_balance, labeled by ingestion state.
-    #[serde(default = "default_get_balance_by_ingestion")]
-    pub get_balance_by_ingestion: LabeledInstructionHistogram,
+    #[serde(default = "default_get_balance_by_ingestion_state")]
+    pub get_balance_by_ingestion_state: LabeledInstructionHistogram,
 
     /// Instructions for get_block_headers, labeled by ingestion state.
-    #[serde(default = "default_get_block_headers_by_ingestion")]
-    pub get_block_headers_by_ingestion: LabeledInstructionHistogram,
+    #[serde(default = "default_get_block_headers_by_ingestion_state")]
+    pub get_block_headers_by_ingestion_state: LabeledInstructionHistogram,
 
     /// Instructions for get_current_fee_percentiles, labeled by ingestion state.
-    #[serde(default = "default_get_fee_percentiles_by_ingestion")]
-    pub get_fee_percentiles_by_ingestion: LabeledInstructionHistogram,
+    #[serde(default = "default_get_fee_percentiles_by_ingestion_state")]
+    pub get_fee_percentiles_by_ingestion_state: LabeledInstructionHistogram,
 
     // send_transaction metrics
     /// Instructions needed to process a send_transaction request.
@@ -177,10 +177,11 @@ impl Default for Metrics {
             unstable_blocks_tip_depths: unstable_blocks_tip_depths(),
 
             // Endpoint metrics split by ingestion state (using labels)
-            get_utxos_by_ingestion: default_get_utxos_by_ingestion(),
-            get_balance_by_ingestion: default_get_balance_by_ingestion(),
-            get_block_headers_by_ingestion: default_get_block_headers_by_ingestion(),
-            get_fee_percentiles_by_ingestion: default_get_fee_percentiles_by_ingestion(),
+            get_utxos_by_ingestion_state: default_get_utxos_by_ingestion_state(),
+            get_balance_by_ingestion_state: default_get_balance_by_ingestion_state(),
+            get_block_headers_by_ingestion_state: default_get_block_headers_by_ingestion_state(),
+            get_fee_percentiles_by_ingestion_state: default_get_fee_percentiles_by_ingestion_state(
+            ),
 
             // send_transaction metrics
             send_transaction_instructions: default_send_transaction_instructions(),
@@ -331,33 +332,33 @@ fn default_get_block_headers_unstable_blocks() -> InstructionHistogram {
 // Default functions for endpoint metrics split by ingestion state (using labels)
 // ========================
 
-fn default_get_utxos_by_ingestion() -> LabeledInstructionHistogram {
+fn default_get_utxos_by_ingestion_state() -> LabeledInstructionHistogram {
     LabeledInstructionHistogram::new(
-        "ins_get_utxos_by_ingestion",
+        "ins_get_utxos_by_ingestion_state",
         "Instructions for get_utxos, labeled by whether a block is being ingested.",
         "ingesting",
     )
 }
 
-fn default_get_balance_by_ingestion() -> LabeledInstructionHistogram {
+fn default_get_balance_by_ingestion_state() -> LabeledInstructionHistogram {
     LabeledInstructionHistogram::new(
-        "ins_get_balance_by_ingestion",
+        "ins_get_balance_by_ingestion_state",
         "Instructions for get_balance, labeled by whether a block is being ingested.",
         "ingesting",
     )
 }
 
-fn default_get_block_headers_by_ingestion() -> LabeledInstructionHistogram {
+fn default_get_block_headers_by_ingestion_state() -> LabeledInstructionHistogram {
     LabeledInstructionHistogram::new(
-        "ins_get_block_headers_by_ingestion",
+        "ins_get_block_headers_by_ingestion_state",
         "Instructions for get_block_headers, labeled by whether a block is being ingested.",
         "ingesting",
     )
 }
 
-fn default_get_fee_percentiles_by_ingestion() -> LabeledInstructionHistogram {
+fn default_get_fee_percentiles_by_ingestion_state() -> LabeledInstructionHistogram {
     LabeledInstructionHistogram::new(
-        "ins_get_fee_percentiles_by_ingestion",
+        "ins_get_fee_percentiles_by_ingestion_state",
         "Instructions for get_fee_percentiles, labeled by whether a block is being ingested.",
         "ingesting",
     )

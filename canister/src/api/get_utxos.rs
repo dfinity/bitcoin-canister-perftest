@@ -89,7 +89,7 @@ fn get_utxos_private(
         // Record metrics split by ingestion state.
         let is_ingesting = s.utxos.ingesting_block.is_some();
         s.metrics
-            .get_utxos_by_ingestion
+            .get_utxos_by_ingestion_state
             .observe(stats.ins_total, is_ingesting);
 
         // Record request context metrics.

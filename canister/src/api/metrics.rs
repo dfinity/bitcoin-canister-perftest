@@ -253,10 +253,16 @@ fn encode_metrics(w: &mut MetricsEncoder<Vec<u8>>) -> std::io::Result<()> {
         )?;
 
         // Endpoint metrics split by ingestion state (using labels)
-        encode_labeled_instruction_histogram(w, &state.metrics.get_utxos_by_ingestion)?;
-        encode_labeled_instruction_histogram(w, &state.metrics.get_balance_by_ingestion)?;
-        encode_labeled_instruction_histogram(w, &state.metrics.get_block_headers_by_ingestion)?;
-        encode_labeled_instruction_histogram(w, &state.metrics.get_fee_percentiles_by_ingestion)?;
+        encode_labeled_instruction_histogram(w, &state.metrics.get_utxos_by_ingestion_state)?;
+        encode_labeled_instruction_histogram(w, &state.metrics.get_balance_by_ingestion_state)?;
+        encode_labeled_instruction_histogram(
+            w,
+            &state.metrics.get_block_headers_by_ingestion_state,
+        )?;
+        encode_labeled_instruction_histogram(
+            w,
+            &state.metrics.get_fee_percentiles_by_ingestion_state,
+        )?;
 
         // send_transaction metrics
         encode_instruction_histogram(w, &state.metrics.send_transaction_instructions)?;
