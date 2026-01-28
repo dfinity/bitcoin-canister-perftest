@@ -72,25 +72,25 @@ pub struct Metrics {
     pub send_transaction_size: Histogram,
 
     // Heartbeat metrics
-    /// Total instructions used by the heartbeat.
+    /// Total instructions used by the heartbeat (in millions).
     #[serde(default = "default_heartbeat_instructions")]
-    pub heartbeat_instructions: InstructionHistogram,
+    pub heartbeat_instructions: Histogram,
 
-    /// Instructions used for ingesting stable blocks in heartbeat.
+    /// Instructions used for ingesting stable blocks in heartbeat (in millions).
     #[serde(default = "default_heartbeat_ingest_stable_blocks")]
-    pub heartbeat_ingest_stable_blocks: InstructionHistogram,
+    pub heartbeat_ingest_stable_blocks: Histogram,
 
-    /// Instructions used for fetching blocks in heartbeat.
+    /// Instructions used for fetching blocks in heartbeat (in millions).
     #[serde(default = "default_heartbeat_fetch_blocks")]
-    pub heartbeat_fetch_blocks: InstructionHistogram,
+    pub heartbeat_fetch_blocks: Histogram,
 
-    /// Instructions used for processing response in heartbeat.
+    /// Instructions used for processing response in heartbeat (in millions).
     #[serde(default = "default_heartbeat_process_response")]
-    pub heartbeat_process_response: InstructionHistogram,
+    pub heartbeat_process_response: Histogram,
 
-    /// Instructions used for computing fee percentiles in heartbeat.
+    /// Instructions used for computing fee percentiles in heartbeat (in millions).
     #[serde(default = "default_heartbeat_fee_percentiles")]
-    pub heartbeat_fee_percentiles: InstructionHistogram,
+    pub heartbeat_fee_percentiles: Histogram,
 
     /// Counter: how often heartbeat exits early due to stable block ingestion.
     #[serde(default)]
@@ -388,38 +388,51 @@ fn default_send_transaction_size() -> Histogram {
 // Default functions for heartbeat metrics
 // ========================
 
-fn default_heartbeat_instructions() -> InstructionHistogram {
-    InstructionHistogram::new(
+/// Generates logarithmic bucket thresholds for instruction counts in millions.
+///
+/// Covers range from 1M to 10T instructions (1 to 10,000,000 in millions).
+/// Buckets: 1, 2, 5, 10, 20, 50, 100, ..., 10_000_000
+fn heartbeat_instruction_buckets() -> Vec<u64> {
+    logarithmic_buckets(0, 7)
+}
+
+fn default_heartbeat_instructions() -> Histogram {
+    Histogram::new(
         "ins_heartbeat_total",
-        "Total instructions used by the heartbeat.",
+        "Total instructions used by the heartbeat (in millions).",
+        heartbeat_instruction_buckets(),
     )
 }
 
-fn default_heartbeat_ingest_stable_blocks() -> InstructionHistogram {
-    InstructionHistogram::new(
+fn default_heartbeat_ingest_stable_blocks() -> Histogram {
+    Histogram::new(
         "ins_heartbeat_ingest_stable_blocks",
-        "Instructions used for ingesting stable blocks in heartbeat.",
+        "Instructions used for ingesting stable blocks in heartbeat (in millions).",
+        heartbeat_instruction_buckets(),
     )
 }
 
-fn default_heartbeat_fetch_blocks() -> InstructionHistogram {
-    InstructionHistogram::new(
+fn default_heartbeat_fetch_blocks() -> Histogram {
+    Histogram::new(
         "ins_heartbeat_fetch_blocks",
-        "Instructions used for fetching blocks in heartbeat.",
+        "Instructions used for fetching blocks in heartbeat (in millions).",
+        heartbeat_instruction_buckets(),
     )
 }
 
-fn default_heartbeat_process_response() -> InstructionHistogram {
-    InstructionHistogram::new(
+fn default_heartbeat_process_response() -> Histogram {
+    Histogram::new(
         "ins_heartbeat_process_response",
-        "Instructions used for processing response in heartbeat.",
+        "Instructions used for processing response in heartbeat (in millions).",
+        heartbeat_instruction_buckets(),
     )
 }
 
-fn default_heartbeat_fee_percentiles() -> InstructionHistogram {
-    InstructionHistogram::new(
+fn default_heartbeat_fee_percentiles() -> Histogram {
+    Histogram::new(
         "ins_heartbeat_fee_percentiles",
-        "Instructions used for computing fee percentiles in heartbeat.",
+        "Instructions used for computing fee percentiles in heartbeat (in millions).",
+        heartbeat_instruction_buckets(),
     )
 }
 

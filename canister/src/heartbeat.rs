@@ -14,6 +14,11 @@ use ic_btc_interface::Flag;
 use ic_btc_types::{Block, BlockHash};
 use std::time::Duration;
 
+/// Converts an instruction count to millions (for histogram observation).
+fn to_millions(instructions: u64) -> f64 {
+    instructions as f64 / 1_000_000.0
+}
+
 /// The heartbeat of the Bitcoin canister.
 ///
 /// The heartbeat fetches new blocks from the bitcoin network and inserts them into the state.
@@ -31,11 +36,11 @@ pub async fn heartbeat() {
         with_state_mut(|s| {
             s.metrics
                 .heartbeat_ingest_stable_blocks
-                .observe(performance_counter() - ins_before);
+                .observe(to_millions(performance_counter() - ins_before));
             s.metrics.heartbeat_early_exit_ingestion += 1;
             s.metrics
                 .heartbeat_instructions
-                .observe(performance_counter() - heartbeat_start);
+                .observe(to_millions(performance_counter() - heartbeat_start));
         });
         print("Done ingesting stable blocks.");
         return;
@@ -43,7 +48,7 @@ pub async fn heartbeat() {
     with_state_mut(|s| {
         s.metrics
             .heartbeat_ingest_stable_blocks
-            .observe(performance_counter() - ins_before);
+            .observe(to_millions(performance_counter() - ins_before));
     });
 
     let ins_before = performance_counter();
@@ -53,11 +58,11 @@ pub async fn heartbeat() {
         with_state_mut(|s| {
             s.metrics
                 .heartbeat_fetch_blocks
-                .observe(performance_counter() - ins_before);
+                .observe(to_millions(performance_counter() - ins_before));
             s.metrics.heartbeat_early_exit_fetch += 1;
             s.metrics
                 .heartbeat_instructions
-                .observe(performance_counter() - heartbeat_start);
+                .observe(to_millions(performance_counter() - heartbeat_start));
         });
         print("Done fetching new response.");
         return;
@@ -65,7 +70,7 @@ pub async fn heartbeat() {
     with_state_mut(|s| {
         s.metrics
             .heartbeat_fetch_blocks
-            .observe(performance_counter() - ins_before);
+            .observe(to_millions(performance_counter() - ins_before));
     });
 
     let ins_before = performance_counter();
@@ -73,7 +78,7 @@ pub async fn heartbeat() {
     with_state_mut(|s| {
         s.metrics
             .heartbeat_process_response
-            .observe(performance_counter() - ins_before);
+            .observe(to_millions(performance_counter() - ins_before));
     });
 
     let ins_before = performance_counter();
@@ -81,10 +86,10 @@ pub async fn heartbeat() {
     with_state_mut(|s| {
         s.metrics
             .heartbeat_fee_percentiles
-            .observe(performance_counter() - ins_before);
+            .observe(to_millions(performance_counter() - ins_before));
         s.metrics
             .heartbeat_instructions
-            .observe(performance_counter() - heartbeat_start);
+            .observe(to_millions(performance_counter() - heartbeat_start));
     });
 }
 

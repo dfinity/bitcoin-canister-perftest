@@ -269,11 +269,11 @@ fn encode_metrics(w: &mut MetricsEncoder<Vec<u8>>) -> std::io::Result<()> {
         encode_histogram(w, &state.metrics.send_transaction_size)?;
 
         // Heartbeat metrics
-        encode_instruction_histogram(w, &state.metrics.heartbeat_instructions)?;
-        encode_instruction_histogram(w, &state.metrics.heartbeat_ingest_stable_blocks)?;
-        encode_instruction_histogram(w, &state.metrics.heartbeat_fetch_blocks)?;
-        encode_instruction_histogram(w, &state.metrics.heartbeat_process_response)?;
-        encode_instruction_histogram(w, &state.metrics.heartbeat_fee_percentiles)?;
+        encode_histogram(w, &state.metrics.heartbeat_instructions)?;
+        encode_histogram(w, &state.metrics.heartbeat_ingest_stable_blocks)?;
+        encode_histogram(w, &state.metrics.heartbeat_fetch_blocks)?;
+        encode_histogram(w, &state.metrics.heartbeat_process_response)?;
+        encode_histogram(w, &state.metrics.heartbeat_fee_percentiles)?;
 
         w.encode_counter(
             "heartbeat_early_exit_ingestion",
