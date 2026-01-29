@@ -156,8 +156,7 @@ pub struct TransientMetrics {
     pub heartbeat_ingest_stable_blocks: InstructionHistogram,
 
     /// Instructions used for fetching blocks in heartbeat.
-    /// Uses logarithmic buckets because fetch can use many more instructions than other phases.
-    pub heartbeat_fetch_blocks: Histogram,
+    pub heartbeat_fetch_blocks: InstructionHistogram,
 
     /// Instructions used for processing response in heartbeat.
     pub heartbeat_process_response: InstructionHistogram,
@@ -423,13 +422,10 @@ fn default_heartbeat_ingest_stable_blocks() -> InstructionHistogram {
     )
 }
 
-/// Fetch blocks can use significantly more instructions than other heartbeat phases
-/// (e.g., when deserializing large blocks), so it uses logarithmic buckets up to 10T.
-fn default_heartbeat_fetch_blocks() -> Histogram {
-    Histogram::new(
+fn default_heartbeat_fetch_blocks() -> InstructionHistogram {
+    InstructionHistogram::new(
         "ins_heartbeat_fetch_blocks",
         "Instructions used for fetching blocks in heartbeat.",
-        logarithmic_buckets(0, 7), // 1M to 10T instructions (displayed in millions: 1 to 10,000,000)
     )
 }
 

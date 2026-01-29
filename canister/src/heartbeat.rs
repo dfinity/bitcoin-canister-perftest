@@ -15,11 +15,6 @@ use ic_btc_interface::Flag;
 use ic_btc_types::{Block, BlockHash};
 use std::time::Duration;
 
-/// Converts an instruction count to millions (for histogram observation).
-fn to_millions(instructions: u64) -> f64 {
-    instructions as f64 / 1_000_000.0
-}
-
 /// The heartbeat of the Bitcoin canister.
 ///
 /// The heartbeat fetches new blocks from the bitcoin network and inserts them into the state.
@@ -49,14 +44,12 @@ pub async fn heartbeat() {
             .observe(performance_counter() - ins_before);
     });
 
-    let ins_before = performance_counter();
+    // Note: heartbeat_fetch_blocks metric is recorded inside maybe_fetch_blocks()
+    // to measure only synchronous instructions (excluding async call wait time).
     if maybe_fetch_blocks().await {
         // Exit the heartbeat if new blocks have been fetched.
         // This is a precaution to not exceed the instructions limit.
         with_transient_metrics(|m| {
-            // heartbeat_fetch_blocks uses Histogram with logarithmic buckets (in millions)
-            m.heartbeat_fetch_blocks
-                .observe(to_millions(performance_counter() - ins_before));
             m.heartbeat_early_exit_fetch += 1;
             m.heartbeat_instructions
                 .observe(performance_counter() - heartbeat_start);
@@ -64,11 +57,6 @@ pub async fn heartbeat() {
         print("Done fetching new response.");
         return;
     }
-    with_transient_metrics(|m| {
-        // heartbeat_fetch_blocks uses Histogram with logarithmic buckets (in millions)
-        m.heartbeat_fetch_blocks
-            .observe(to_millions(performance_counter() - ins_before));
-    });
 
     let ins_before = performance_counter();
     maybe_process_response();
@@ -90,6 +78,9 @@ pub async fn heartbeat() {
 // Fetches new blocks if there isn't a request in progress and no complete response to process.
 // Returns true if a call to the `blocks_source` has been made, false otherwise.
 async fn maybe_fetch_blocks() -> bool {
+    // Track instructions for synchronous parts only (not across the async call).
+    let sync_start = performance_counter();
+
     if with_state(|s| s.syncing_state.syncing == Flag::Disabled) {
         // Syncing is disabled.
         return false;
@@ -136,8 +127,15 @@ async fn maybe_fetch_blocks() -> bool {
 
     print(&format!("Sending request: {:?}", request));
 
+    // Measure instructions before the async call.
+    let ins_before_async = performance_counter();
+    let ins_pre_call = ins_before_async - sync_start;
+
     let response: Result<GetSuccessorsResponse, _> =
         call_get_successors(with_state(|s| s.blocks_source), request).await;
+
+    // Measure instructions after the async call returns (start of post-call sync work).
+    let ins_after_async = performance_counter();
 
     // Save the response.
     with_state_mut(|s| {
@@ -231,6 +229,14 @@ async fn maybe_fetch_blocks() -> bool {
                 );
             }
         };
+    });
+
+    // Measure instructions for post-call synchronous work.
+    let ins_post_call = performance_counter() - ins_after_async;
+
+    // Record total synchronous instructions (excludes time spent waiting for async response).
+    with_transient_metrics(|m| {
+        m.heartbeat_fetch_blocks.observe(ins_pre_call + ins_post_call);
     });
 
     // A request to fetch new blocks has been made.

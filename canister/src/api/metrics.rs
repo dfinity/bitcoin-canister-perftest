@@ -281,7 +281,7 @@ fn encode_metrics(w: &mut MetricsEncoder<Vec<u8>>) -> std::io::Result<()> {
         // Heartbeat metrics
         encode_instruction_histogram(w, &m.heartbeat_instructions)?;
         encode_instruction_histogram(w, &m.heartbeat_ingest_stable_blocks)?;
-        encode_histogram(w, &m.heartbeat_fetch_blocks)?; // Uses Histogram with large logarithmic buckets
+        encode_instruction_histogram(w, &m.heartbeat_fetch_blocks)?;
         encode_instruction_histogram(w, &m.heartbeat_process_response)?;
         encode_instruction_histogram(w, &m.heartbeat_fee_percentiles)?;
 
