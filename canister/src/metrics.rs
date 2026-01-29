@@ -149,20 +149,21 @@ pub struct TransientMetrics {
     pub send_transaction_size: Histogram,
 
     // Heartbeat metrics
-    /// Total instructions used by the heartbeat (in millions).
-    pub heartbeat_instructions: Histogram,
+    /// Total instructions used by the heartbeat.
+    pub heartbeat_instructions: InstructionHistogram,
 
-    /// Instructions used for ingesting stable blocks in heartbeat (in millions).
-    pub heartbeat_ingest_stable_blocks: Histogram,
+    /// Instructions used for ingesting stable blocks in heartbeat.
+    pub heartbeat_ingest_stable_blocks: InstructionHistogram,
 
-    /// Instructions used for fetching blocks in heartbeat (in millions).
+    /// Instructions used for fetching blocks in heartbeat.
+    /// Uses logarithmic buckets because fetch can use many more instructions than other phases.
     pub heartbeat_fetch_blocks: Histogram,
 
-    /// Instructions used for processing response in heartbeat (in millions).
-    pub heartbeat_process_response: Histogram,
+    /// Instructions used for processing response in heartbeat.
+    pub heartbeat_process_response: InstructionHistogram,
 
-    /// Instructions used for computing fee percentiles in heartbeat (in millions).
-    pub heartbeat_fee_percentiles: Histogram,
+    /// Instructions used for computing fee percentiles in heartbeat.
+    pub heartbeat_fee_percentiles: InstructionHistogram,
 
     /// Counter: how often heartbeat exits early due to stable block ingestion.
     pub heartbeat_early_exit_ingestion: u64,
@@ -408,49 +409,41 @@ fn default_send_transaction_size() -> Histogram {
 
 /// Generates logarithmic bucket thresholds for instruction counts in millions.
 ///
-/// Covers range from 1M to 10T instructions (1 to 10,000,000 in millions).
-/// Buckets: 1, 2, 5, 10, 20, 50, 100, ..., 10_000_000
-fn heartbeat_instruction_buckets() -> Vec<u64> {
-    logarithmic_buckets(0, 7)
-}
-
-fn default_heartbeat_instructions() -> Histogram {
-    Histogram::new(
+fn default_heartbeat_instructions() -> InstructionHistogram {
+    InstructionHistogram::new(
         "ins_heartbeat_total",
-        "Total instructions used by the heartbeat (in millions).",
-        heartbeat_instruction_buckets(),
+        "Total instructions used by the heartbeat.",
     )
 }
 
-fn default_heartbeat_ingest_stable_blocks() -> Histogram {
-    Histogram::new(
+fn default_heartbeat_ingest_stable_blocks() -> InstructionHistogram {
+    InstructionHistogram::new(
         "ins_heartbeat_ingest_stable_blocks",
-        "Instructions used for ingesting stable blocks in heartbeat (in millions).",
-        heartbeat_instruction_buckets(),
+        "Instructions used for ingesting stable blocks in heartbeat.",
     )
 }
 
+/// Fetch blocks can use significantly more instructions than other heartbeat phases
+/// (e.g., when deserializing large blocks), so it uses logarithmic buckets up to 10T.
 fn default_heartbeat_fetch_blocks() -> Histogram {
     Histogram::new(
         "ins_heartbeat_fetch_blocks",
-        "Instructions used for fetching blocks in heartbeat (in millions).",
-        heartbeat_instruction_buckets(),
+        "Instructions used for fetching blocks in heartbeat.",
+        logarithmic_buckets(0, 7), // 1M to 10T instructions (displayed in millions: 1 to 10,000,000)
     )
 }
 
-fn default_heartbeat_process_response() -> Histogram {
-    Histogram::new(
+fn default_heartbeat_process_response() -> InstructionHistogram {
+    InstructionHistogram::new(
         "ins_heartbeat_process_response",
-        "Instructions used for processing response in heartbeat (in millions).",
-        heartbeat_instruction_buckets(),
+        "Instructions used for processing response in heartbeat.",
     )
 }
 
-fn default_heartbeat_fee_percentiles() -> Histogram {
-    Histogram::new(
+fn default_heartbeat_fee_percentiles() -> InstructionHistogram {
+    InstructionHistogram::new(
         "ins_heartbeat_fee_percentiles",
-        "Instructions used for computing fee percentiles in heartbeat (in millions).",
-        heartbeat_instruction_buckets(),
+        "Instructions used for computing fee percentiles in heartbeat.",
     )
 }
 
@@ -705,8 +698,14 @@ mod test {
             map.push((
                 Value::Text("heartbeat_instructions".to_string()),
                 Value::Map(vec![
-                    (Value::Text("name".to_string()), Value::Text("test".to_string())),
-                    (Value::Text("help".to_string()), Value::Text("test".to_string())),
+                    (
+                        Value::Text("name".to_string()),
+                        Value::Text("test".to_string()),
+                    ),
+                    (
+                        Value::Text("help".to_string()),
+                        Value::Text("test".to_string()),
+                    ),
                     (Value::Text("thresholds".to_string()), Value::Array(vec![])),
                     (Value::Text("buckets".to_string()), Value::Array(vec![])),
                     (Value::Text("sum".to_string()), Value::Float(0.0)),
