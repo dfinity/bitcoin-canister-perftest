@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 
 use crate::utxo_set::BlockIngestionStats;
 
@@ -6,7 +7,14 @@ const M: u64 = 1_000_000;
 const BUCKET_SIZE: u64 = 500 * M;
 const NUM_BUCKETS: u64 = 21;
 
-/// Metrics for various endpoints.
+// =============================================================================
+// Persisted Metrics (stored in State, survives upgrades)
+// =============================================================================
+
+/// Metrics that are persisted across upgrades.
+///
+/// NOTE: When deserializing old state, unknown fields are silently ignored by ciborium.
+/// This allows us to remove fields without breaking backward compatibility.
 #[derive(Serialize, Deserialize, PartialEq)]
 pub struct Metrics {
     pub get_utxos_total: InstructionHistogram,
@@ -44,88 +52,6 @@ pub struct Metrics {
     /// The depth distribution of unstable block branches.
     #[serde(default = "unstable_blocks_tip_depths")]
     pub unstable_blocks_tip_depths: Histogram,
-
-    // Endpoint metrics split by ingestion state (using labels)
-    /// Instructions for get_utxos, labeled by ingestion state.
-    #[serde(default = "default_get_utxos_by_ingestion_state")]
-    pub get_utxos_by_ingestion_state: LabeledInstructionHistogram,
-
-    /// Instructions for get_balance, labeled by ingestion state.
-    #[serde(default = "default_get_balance_by_ingestion_state")]
-    pub get_balance_by_ingestion_state: LabeledInstructionHistogram,
-
-    /// Instructions for get_block_headers, labeled by ingestion state.
-    #[serde(default = "default_get_block_headers_by_ingestion_state")]
-    pub get_block_headers_by_ingestion_state: LabeledInstructionHistogram,
-
-    /// Instructions for get_current_fee_percentiles, labeled by ingestion state.
-    #[serde(default = "default_get_fee_percentiles_by_ingestion_state")]
-    pub get_fee_percentiles_by_ingestion_state: LabeledInstructionHistogram,
-
-    // send_transaction metrics
-    /// Instructions needed to process a send_transaction request.
-    #[serde(default = "default_send_transaction_instructions")]
-    pub send_transaction_instructions: InstructionHistogram,
-
-    /// Distribution of transaction sizes in send_transaction.
-    #[serde(default = "default_send_transaction_size")]
-    pub send_transaction_size: Histogram,
-
-    // Heartbeat metrics
-    /// Total instructions used by the heartbeat (in millions).
-    #[serde(default = "default_heartbeat_instructions")]
-    pub heartbeat_instructions: Histogram,
-
-    /// Instructions used for ingesting stable blocks in heartbeat (in millions).
-    #[serde(default = "default_heartbeat_ingest_stable_blocks")]
-    pub heartbeat_ingest_stable_blocks: Histogram,
-
-    /// Instructions used for fetching blocks in heartbeat (in millions).
-    #[serde(default = "default_heartbeat_fetch_blocks")]
-    pub heartbeat_fetch_blocks: Histogram,
-
-    /// Instructions used for processing response in heartbeat (in millions).
-    #[serde(default = "default_heartbeat_process_response")]
-    pub heartbeat_process_response: Histogram,
-
-    /// Instructions used for computing fee percentiles in heartbeat (in millions).
-    #[serde(default = "default_heartbeat_fee_percentiles")]
-    pub heartbeat_fee_percentiles: Histogram,
-
-    /// Counter: how often heartbeat exits early due to stable block ingestion.
-    #[serde(default)]
-    pub heartbeat_early_exit_ingestion: u64,
-
-    /// Counter: how often heartbeat exits early due to fetching blocks.
-    #[serde(default)]
-    pub heartbeat_early_exit_fetch: u64,
-
-    // Block ingestion timing metrics
-    /// Distribution of block ingestion durations in seconds.
-    #[serde(default = "default_block_ingestion_duration")]
-    pub block_ingestion_duration: Histogram,
-
-    /// Distribution of rounds needed to ingest a block.
-    #[serde(default = "default_block_ingestion_rounds")]
-    pub block_ingestion_rounds: Histogram,
-
-    /// Counter: how many times block ingestion was time-sliced.
-    #[serde(default)]
-    pub ingestion_time_slice_count: u64,
-
-    /// Distribution of transactions processed per round during ingestion.
-    #[serde(default = "default_ingestion_txs_per_round")]
-    pub ingestion_txs_per_round: Histogram,
-
-    // Request context metrics for get_utxos
-    /// Distribution of UTXOs returned by get_utxos.
-    #[serde(default = "default_get_utxos_utxos_returned")]
-    pub get_utxos_utxos_returned: Histogram,
-
-    /// Number of unstable blocks traversed per get_utxos request (excludes blocks filtered by
-    /// `min_confirmations`).
-    #[serde(default = "default_get_utxos_unstable_blocks_applied")]
-    pub get_utxos_unstable_blocks_applied: Histogram,
 }
 
 impl Default for Metrics {
@@ -176,7 +102,99 @@ impl Default for Metrics {
             get_successors_request_interval: get_successors_request_interval(),
 
             unstable_blocks_tip_depths: unstable_blocks_tip_depths(),
+        }
+    }
+}
 
+// =============================================================================
+// Transient Metrics (thread-local, reset on upgrade)
+// =============================================================================
+
+thread_local! {
+    /// Transient metrics that are reset on each canister upgrade.
+    /// These metrics are not persisted to stable memory.
+    static TRANSIENT_METRICS: RefCell<TransientMetrics> = RefCell::new(TransientMetrics::default());
+}
+
+/// Access transient metrics for reading/writing.
+pub fn with_transient_metrics<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut TransientMetrics) -> R,
+{
+    TRANSIENT_METRICS.with(|m| f(&mut m.borrow_mut()))
+}
+
+/// Transient metrics that are NOT persisted across upgrades.
+/// This is intentional - Prometheus/Grafana handles gaps in metrics data gracefully,
+/// and not persisting these simplifies schema evolution (we can freely change types/buckets).
+pub struct TransientMetrics {
+    // Endpoint metrics split by ingestion state (using labels)
+    /// Instructions for get_utxos, labeled by ingestion state.
+    pub get_utxos_by_ingestion_state: LabeledInstructionHistogram,
+
+    /// Instructions for get_balance, labeled by ingestion state.
+    pub get_balance_by_ingestion_state: LabeledInstructionHistogram,
+
+    /// Instructions for get_block_headers, labeled by ingestion state.
+    pub get_block_headers_by_ingestion_state: LabeledInstructionHistogram,
+
+    /// Instructions for get_current_fee_percentiles, labeled by ingestion state.
+    pub get_fee_percentiles_by_ingestion_state: LabeledInstructionHistogram,
+
+    // send_transaction metrics
+    /// Instructions needed to process a send_transaction request.
+    pub send_transaction_instructions: InstructionHistogram,
+
+    /// Distribution of transaction sizes in send_transaction.
+    pub send_transaction_size: Histogram,
+
+    // Heartbeat metrics
+    /// Total instructions used by the heartbeat (in millions).
+    pub heartbeat_instructions: Histogram,
+
+    /// Instructions used for ingesting stable blocks in heartbeat (in millions).
+    pub heartbeat_ingest_stable_blocks: Histogram,
+
+    /// Instructions used for fetching blocks in heartbeat (in millions).
+    pub heartbeat_fetch_blocks: Histogram,
+
+    /// Instructions used for processing response in heartbeat (in millions).
+    pub heartbeat_process_response: Histogram,
+
+    /// Instructions used for computing fee percentiles in heartbeat (in millions).
+    pub heartbeat_fee_percentiles: Histogram,
+
+    /// Counter: how often heartbeat exits early due to stable block ingestion.
+    pub heartbeat_early_exit_ingestion: u64,
+
+    /// Counter: how often heartbeat exits early due to fetching blocks.
+    pub heartbeat_early_exit_fetch: u64,
+
+    // Block ingestion timing metrics
+    /// Distribution of block ingestion durations in seconds.
+    pub block_ingestion_duration: Histogram,
+
+    /// Distribution of rounds needed to ingest a block.
+    pub block_ingestion_rounds: Histogram,
+
+    /// Counter: how many times block ingestion was time-sliced.
+    pub ingestion_time_slice_count: u64,
+
+    /// Distribution of transactions processed per round during ingestion.
+    pub ingestion_txs_per_round: Histogram,
+
+    // Request context metrics for get_utxos
+    /// Distribution of UTXOs returned by get_utxos.
+    pub get_utxos_utxos_returned: Histogram,
+
+    /// Number of unstable blocks traversed per get_utxos request (excludes blocks filtered by
+    /// `min_confirmations`).
+    pub get_utxos_unstable_blocks_applied: Histogram,
+}
+
+impl Default for TransientMetrics {
+    fn default() -> Self {
+        Self {
             // Endpoint metrics split by ingestion state (using labels)
             get_utxos_by_ingestion_state: default_get_utxos_by_ingestion_state(),
             get_balance_by_ingestion_state: default_get_balance_by_ingestion_state(),
@@ -485,7 +503,7 @@ fn default_get_utxos_unstable_blocks_applied() -> Histogram {
 }
 
 /// A histogram for observing values, using custom bucket thresholds.
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Histogram {
     pub name: String,
     pub help: String,
@@ -497,7 +515,7 @@ pub struct Histogram {
 impl Histogram {
     /// Creates a new histogram with custom bucket thresholds.
     ///
-    /// `thresholds` must be a sorted vector of bucket limits (e.g., from `decimal_buckets()`).
+    /// `thresholds` must be a sorted vector of bucket limits (e.g., from `logarithmic_buckets()`).
     pub fn new<S: Into<String>>(name: S, help: S, thresholds: Vec<u64>) -> Self {
         assert!(
             thresholds.windows(2).all(|w| w[0] < w[1]),
@@ -663,5 +681,47 @@ mod test {
             h.buckets().skip(20).collect::<Vec<_>>(),
             vec![(f64::INFINITY, 2.0)]
         );
+    }
+
+    /// Test that Metrics can be deserialized from old state that contains
+    /// fields that have since been removed (moved to TransientMetrics).
+    /// ciborium (CBOR) ignores unknown fields by default.
+    #[test]
+    fn metrics_backward_compatible_deserialization() {
+        // Simulate old Metrics struct that had extra fields.
+        // We use a map of values that includes fields from both old and new.
+        use ciborium::value::Value;
+
+        // Create a minimal valid Metrics with some of the old fields.
+        let new_metrics = Metrics::default();
+        let mut bytes = vec![];
+        ciborium::ser::into_writer(&new_metrics, &mut bytes).unwrap();
+
+        // Deserialize to a Value, add an extra field, then serialize back.
+        let mut value: Value = ciborium::de::from_reader(&bytes[..]).unwrap();
+        if let Value::Map(ref mut map) = value {
+            // Add an old field that no longer exists in the struct.
+            // This simulates what happens when upgrading from old state.
+            map.push((
+                Value::Text("heartbeat_instructions".to_string()),
+                Value::Map(vec![
+                    (Value::Text("name".to_string()), Value::Text("test".to_string())),
+                    (Value::Text("help".to_string()), Value::Text("test".to_string())),
+                    (Value::Text("thresholds".to_string()), Value::Array(vec![])),
+                    (Value::Text("buckets".to_string()), Value::Array(vec![])),
+                    (Value::Text("sum".to_string()), Value::Float(0.0)),
+                ]),
+            ));
+        }
+
+        // Serialize the modified value.
+        let mut modified_bytes = vec![];
+        ciborium::ser::into_writer(&value, &mut modified_bytes).unwrap();
+
+        // Deserialize as Metrics - this should succeed, ignoring unknown fields.
+        let deserialized: Metrics = ciborium::de::from_reader(&modified_bytes[..]).unwrap();
+
+        // Verify the deserialized struct is valid.
+        assert_eq!(deserialized.send_transaction_count, 0);
     }
 }

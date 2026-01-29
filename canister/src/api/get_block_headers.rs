@@ -3,6 +3,7 @@ use ic_btc_interface::{GetBlockHeadersError, GetBlockHeadersRequest, GetBlockHea
 
 use crate::{
     charge_cycles,
+    metrics::with_transient_metrics,
     runtime::{performance_counter, print},
     state::main_chain_height,
     verify_has_enough_cycles, with_state, with_state_mut,
@@ -143,6 +144,7 @@ pub fn get_block_headers(
     let (res, stats) = get_block_headers_internal(&request)?;
 
     // Observe metrics.
+    let is_ingesting = with_state(|s| s.utxos.ingesting_block.is_some());
     with_state_mut(|s| {
         s.metrics.get_block_headers_total.observe(stats.ins_total);
 
@@ -153,11 +155,10 @@ pub fn get_block_headers(
         s.metrics
             .get_block_headers_unstable_blocks
             .observe(stats.ins_build_block_headers_unstable_blocks);
-
-        // Record metrics split by ingestion state.
-        let is_ingesting = s.utxos.ingesting_block.is_some();
-        s.metrics
-            .get_block_headers_by_ingestion_state
+    });
+    // Record metrics split by ingestion state.
+    with_transient_metrics(|m| {
+        m.get_block_headers_by_ingestion_state
             .observe(stats.ins_total, is_ingesting);
     });
 

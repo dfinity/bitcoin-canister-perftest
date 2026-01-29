@@ -1,6 +1,7 @@
 use crate::{
     blocktree::BlockChain,
     charge_cycles,
+    metrics::with_transient_metrics,
     runtime::{performance_counter, print},
     types::{Address, GetUtxosRequest, Page, Utxo},
     unstable_blocks, verify_has_enough_cycles, with_state, with_state_mut, State,
@@ -77,6 +78,7 @@ fn get_utxos_private(
     })?;
 
     // Observe metrics
+    let is_ingesting = with_state(|s| s.utxos.ingesting_block.is_some());
     with_state_mut(|s| {
         s.metrics.get_utxos_total.observe(stats.ins_total);
         s.metrics
@@ -85,19 +87,14 @@ fn get_utxos_private(
         s.metrics
             .get_utxos_build_utxos_vec
             .observe(stats.ins_build_utxos_vec);
-
-        // Record metrics split by ingestion state.
-        let is_ingesting = s.utxos.ingesting_block.is_some();
-        s.metrics
-            .get_utxos_by_ingestion_state
+    });
+    // Record metrics split by ingestion state and request context metrics.
+    with_transient_metrics(|m| {
+        m.get_utxos_by_ingestion_state
             .observe(stats.ins_total, is_ingesting);
-
-        // Record request context metrics.
-        s.metrics
-            .get_utxos_utxos_returned
+        m.get_utxos_utxos_returned
             .observe(stats.utxos_returned as f64);
-        s.metrics
-            .get_utxos_unstable_blocks_applied
+        m.get_utxos_unstable_blocks_applied
             .observe(stats.unstable_blocks_applied as f64);
     });
 

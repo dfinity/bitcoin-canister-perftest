@@ -2,7 +2,7 @@ use crate::validation::ValidationContextError;
 use crate::{
     address_utxoset::AddressUtxoSet,
     block_header_store::BlockHeaderStore,
-    metrics::Metrics,
+    metrics::{with_transient_metrics, Metrics},
     runtime::{duration_since_epoch, inc_performance_counter, performance_counter, print},
     types::{
         into_bitcoin_network, Address, BlockHeaderBlob, GetSuccessorsCompleteResponse,
@@ -178,30 +178,28 @@ pub fn ingest_stable_blocks_into_utxoset(state: &mut State) -> bool {
     fn record_ingestion_metrics(state: &mut State, stats: &crate::utxo_set::BlockIngestionStats) {
         state.metrics.block_ingestion_stats = stats.clone();
 
-        // Record the duration if timing is available.
-        if let Some(duration_secs) = stats.get_duration_seconds() {
-            state
-                .metrics
-                .block_ingestion_duration
-                .observe(duration_secs);
-        }
+        // Record transient metrics (not persisted across upgrades).
+        with_transient_metrics(|m| {
+            // Record the duration if timing is available.
+            if let Some(duration_secs) = stats.get_duration_seconds() {
+                m.block_ingestion_duration.observe(duration_secs);
+            }
 
-        // Record the number of rounds.
-        state
-            .metrics
-            .block_ingestion_rounds
-            .observe(stats.get_num_rounds() as f64);
+            // Record the number of rounds.
+            m.block_ingestion_rounds
+                .observe(stats.get_num_rounds() as f64);
 
-        // Record transactions processed in the last round.
-        state
-            .metrics
-            .ingestion_txs_per_round
-            .observe(stats.get_txs_processed_last_round() as f64);
+            // Record transactions processed in the last round.
+            m.ingestion_txs_per_round
+                .observe(stats.get_txs_processed_last_round() as f64);
+        });
     }
 
     // Helper to record time-slice event when ingestion is paused.
-    fn record_time_slice(state: &mut State) {
-        state.metrics.ingestion_time_slice_count += 1;
+    fn record_time_slice(_state: &mut State) {
+        with_transient_metrics(|m| {
+            m.ingestion_time_slice_count += 1;
+        });
     }
 
     let prev_state = (

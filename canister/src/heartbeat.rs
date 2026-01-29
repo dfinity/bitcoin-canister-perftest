@@ -1,5 +1,6 @@
 use crate::{
     api::get_current_fee_percentiles_impl,
+    metrics::with_transient_metrics,
     runtime::{call_get_successors, cycles_burn, performance_counter, print, time},
     state::{self, ResponseToProcess},
     types::{
@@ -33,21 +34,18 @@ pub async fn heartbeat() {
     if ingest_stable_blocks_into_utxoset() {
         // Exit the heartbeat if stable blocks had been ingested.
         // This is a precaution to not exceed the instructions limit.
-        with_state_mut(|s| {
-            s.metrics
-                .heartbeat_ingest_stable_blocks
+        with_transient_metrics(|m| {
+            m.heartbeat_ingest_stable_blocks
                 .observe(to_millions(performance_counter() - ins_before));
-            s.metrics.heartbeat_early_exit_ingestion += 1;
-            s.metrics
-                .heartbeat_instructions
+            m.heartbeat_early_exit_ingestion += 1;
+            m.heartbeat_instructions
                 .observe(to_millions(performance_counter() - heartbeat_start));
         });
         print("Done ingesting stable blocks.");
         return;
     }
-    with_state_mut(|s| {
-        s.metrics
-            .heartbeat_ingest_stable_blocks
+    with_transient_metrics(|m| {
+        m.heartbeat_ingest_stable_blocks
             .observe(to_millions(performance_counter() - ins_before));
     });
 
@@ -55,40 +53,34 @@ pub async fn heartbeat() {
     if maybe_fetch_blocks().await {
         // Exit the heartbeat if new blocks have been fetched.
         // This is a precaution to not exceed the instructions limit.
-        with_state_mut(|s| {
-            s.metrics
-                .heartbeat_fetch_blocks
+        with_transient_metrics(|m| {
+            m.heartbeat_fetch_blocks
                 .observe(to_millions(performance_counter() - ins_before));
-            s.metrics.heartbeat_early_exit_fetch += 1;
-            s.metrics
-                .heartbeat_instructions
+            m.heartbeat_early_exit_fetch += 1;
+            m.heartbeat_instructions
                 .observe(to_millions(performance_counter() - heartbeat_start));
         });
         print("Done fetching new response.");
         return;
     }
-    with_state_mut(|s| {
-        s.metrics
-            .heartbeat_fetch_blocks
+    with_transient_metrics(|m| {
+        m.heartbeat_fetch_blocks
             .observe(to_millions(performance_counter() - ins_before));
     });
 
     let ins_before = performance_counter();
     maybe_process_response();
-    with_state_mut(|s| {
-        s.metrics
-            .heartbeat_process_response
+    with_transient_metrics(|m| {
+        m.heartbeat_process_response
             .observe(to_millions(performance_counter() - ins_before));
     });
 
     let ins_before = performance_counter();
     maybe_compute_fee_percentiles();
-    with_state_mut(|s| {
-        s.metrics
-            .heartbeat_fee_percentiles
+    with_transient_metrics(|m| {
+        m.heartbeat_fee_percentiles
             .observe(to_millions(performance_counter() - ins_before));
-        s.metrics
-            .heartbeat_instructions
+        m.heartbeat_instructions
             .observe(to_millions(performance_counter() - heartbeat_start));
     });
 }

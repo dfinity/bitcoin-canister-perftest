@@ -1,5 +1,5 @@
 use crate::{
-    metrics::{Histogram, InstructionHistogram},
+    metrics::{with_transient_metrics, Histogram, InstructionHistogram},
     state,
     types::HttpResponse,
     unstable_blocks::testnet_unstable_max_depth_difference,
@@ -252,56 +252,6 @@ fn encode_metrics(w: &mut MetricsEncoder<Vec<u8>>) -> std::io::Result<()> {
             &stats.get_size_metrics(),
         )?;
 
-        // Endpoint metrics split by ingestion state (using labels)
-        encode_labeled_instruction_histogram(w, &state.metrics.get_utxos_by_ingestion_state)?;
-        encode_labeled_instruction_histogram(w, &state.metrics.get_balance_by_ingestion_state)?;
-        encode_labeled_instruction_histogram(
-            w,
-            &state.metrics.get_block_headers_by_ingestion_state,
-        )?;
-        encode_labeled_instruction_histogram(
-            w,
-            &state.metrics.get_fee_percentiles_by_ingestion_state,
-        )?;
-
-        // send_transaction metrics
-        encode_instruction_histogram(w, &state.metrics.send_transaction_instructions)?;
-        encode_histogram(w, &state.metrics.send_transaction_size)?;
-
-        // Heartbeat metrics
-        encode_histogram(w, &state.metrics.heartbeat_instructions)?;
-        encode_histogram(w, &state.metrics.heartbeat_ingest_stable_blocks)?;
-        encode_histogram(w, &state.metrics.heartbeat_fetch_blocks)?;
-        encode_histogram(w, &state.metrics.heartbeat_process_response)?;
-        encode_histogram(w, &state.metrics.heartbeat_fee_percentiles)?;
-
-        w.encode_counter(
-            "heartbeat_early_exit_ingestion",
-            state.metrics.heartbeat_early_exit_ingestion as f64,
-            "How often heartbeat exits early due to stable block ingestion.",
-        )?;
-        w.encode_counter(
-            "heartbeat_early_exit_fetch",
-            state.metrics.heartbeat_early_exit_fetch as f64,
-            "How often heartbeat exits early due to fetching blocks.",
-        )?;
-
-        // Block ingestion timing metrics
-        encode_histogram(w, &state.metrics.block_ingestion_duration)?;
-        encode_histogram(w, &state.metrics.block_ingestion_rounds)?;
-
-        w.encode_counter(
-            "ingestion_time_slice_count",
-            state.metrics.ingestion_time_slice_count as f64,
-            "How many times block ingestion was time-sliced.",
-        )?;
-
-        encode_histogram(w, &state.metrics.ingestion_txs_per_round)?;
-
-        // Request context metrics
-        encode_histogram(w, &state.metrics.get_utxos_utxos_returned)?;
-        encode_histogram(w, &state.metrics.get_utxos_unstable_blocks_applied)?;
-
         // Ingestion state indicator
         w.encode_gauge(
             "is_ingesting_block",
@@ -312,6 +262,55 @@ fn encode_metrics(w: &mut MetricsEncoder<Vec<u8>>) -> std::io::Result<()> {
             },
             "Is the canister currently ingesting a block? (1 = yes, 0 = no)",
         )?;
+
+        Ok::<(), io::Error>(())
+    })?;
+
+    // Encode transient metrics (not persisted across upgrades)
+    with_transient_metrics(|m| -> io::Result<()> {
+        // Endpoint metrics split by ingestion state (using labels)
+        encode_labeled_instruction_histogram(w, &m.get_utxos_by_ingestion_state)?;
+        encode_labeled_instruction_histogram(w, &m.get_balance_by_ingestion_state)?;
+        encode_labeled_instruction_histogram(w, &m.get_block_headers_by_ingestion_state)?;
+        encode_labeled_instruction_histogram(w, &m.get_fee_percentiles_by_ingestion_state)?;
+
+        // send_transaction metrics
+        encode_instruction_histogram(w, &m.send_transaction_instructions)?;
+        encode_histogram(w, &m.send_transaction_size)?;
+
+        // Heartbeat metrics
+        encode_histogram(w, &m.heartbeat_instructions)?;
+        encode_histogram(w, &m.heartbeat_ingest_stable_blocks)?;
+        encode_histogram(w, &m.heartbeat_fetch_blocks)?;
+        encode_histogram(w, &m.heartbeat_process_response)?;
+        encode_histogram(w, &m.heartbeat_fee_percentiles)?;
+
+        w.encode_counter(
+            "heartbeat_early_exit_ingestion",
+            m.heartbeat_early_exit_ingestion as f64,
+            "How often heartbeat exits early due to stable block ingestion.",
+        )?;
+        w.encode_counter(
+            "heartbeat_early_exit_fetch",
+            m.heartbeat_early_exit_fetch as f64,
+            "How often heartbeat exits early due to fetching blocks.",
+        )?;
+
+        // Block ingestion timing metrics
+        encode_histogram(w, &m.block_ingestion_duration)?;
+        encode_histogram(w, &m.block_ingestion_rounds)?;
+
+        w.encode_counter(
+            "ingestion_time_slice_count",
+            m.ingestion_time_slice_count as f64,
+            "How many times block ingestion was time-sliced.",
+        )?;
+
+        encode_histogram(w, &m.ingestion_txs_per_round)?;
+
+        // Request context metrics
+        encode_histogram(w, &m.get_utxos_utxos_returned)?;
+        encode_histogram(w, &m.get_utxos_unstable_blocks_applied)?;
 
         Ok(())
     })

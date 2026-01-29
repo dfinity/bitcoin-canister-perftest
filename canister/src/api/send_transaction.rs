@@ -1,5 +1,6 @@
 use crate::{
     charge_cycles,
+    metrics::with_transient_metrics,
     runtime::{self, performance_counter},
     types::SendTransactionInternalRequest,
     verify_api_access, verify_network, with_state, with_state_mut,
@@ -28,9 +29,9 @@ pub async fn send_transaction(request: SendTransactionRequest) -> Result<(), Sen
     // Bump the counter for the number of (valid) requests received and record metrics.
     with_state_mut(|s| {
         s.metrics.send_transaction_count += 1;
-        s.metrics
-            .send_transaction_size
-            .observe(transaction_size as f64);
+    });
+    with_transient_metrics(|m| {
+        m.send_transaction_size.observe(transaction_size as f64);
     });
 
     // Use the internal endpoint to send the transaction to the bitcoin network.
@@ -45,9 +46,8 @@ pub async fn send_transaction(request: SendTransactionRequest) -> Result<(), Sen
     .expect("Sending transaction bitcoin network must succeed");
 
     // Record instruction count.
-    with_state_mut(|s| {
-        s.metrics
-            .send_transaction_instructions
+    with_transient_metrics(|m| {
+        m.send_transaction_instructions
             .observe(performance_counter() - start);
     });
 

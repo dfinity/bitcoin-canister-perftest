@@ -1,5 +1,6 @@
 use crate::{
     charge_cycles,
+    metrics::with_transient_metrics,
     runtime::{performance_counter, print},
     types::{Address, GetBalanceRequest},
     unstable_blocks, verify_has_enough_cycles, with_state, with_state_mut,
@@ -90,16 +91,16 @@ fn get_balance_private(request: GetBalanceRequest) -> Result<Satoshi, GetBalance
     })?;
 
     // Observe metrics
+    let is_ingesting = with_state(|s| s.utxos.ingesting_block.is_some());
     with_state_mut(|s| {
         s.metrics.get_balance_total.observe(stats.ins_total);
         s.metrics
             .get_balance_apply_unstable_blocks
             .observe(stats.ins_apply_unstable_blocks);
-
-        // Record metrics split by ingestion state.
-        let is_ingesting = s.utxos.ingesting_block.is_some();
-        s.metrics
-            .get_balance_by_ingestion_state
+    });
+    // Record metrics split by ingestion state.
+    with_transient_metrics(|m| {
+        m.get_balance_by_ingestion_state
             .observe(stats.ins_total, is_ingesting);
     });
 

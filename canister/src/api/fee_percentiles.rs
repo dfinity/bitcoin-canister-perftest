@@ -1,5 +1,6 @@
 use crate::{
     charge_cycles,
+    metrics::with_transient_metrics,
     runtime::{performance_counter, print},
     state::{FeePercentilesCache, State},
     unstable_blocks::{self, UnstableBlocks},
@@ -22,15 +23,15 @@ pub fn get_current_fee_percentiles() -> Vec<MillisatoshiPerByte> {
 
     // Observe instruction count.
     let ins_total = performance_counter();
+    let is_ingesting = with_state(|s| s.utxos.ingesting_block.is_some());
     with_state_mut(|s| {
         s.metrics
             .get_current_fee_percentiles_total
             .observe(ins_total);
-
-        // Record metrics split by ingestion state.
-        let is_ingesting = s.utxos.ingesting_block.is_some();
-        s.metrics
-            .get_fee_percentiles_by_ingestion_state
+    });
+    // Record metrics split by ingestion state.
+    with_transient_metrics(|m| {
+        m.get_fee_percentiles_by_ingestion_state
             .observe(ins_total, is_ingesting);
     });
     print(&format!(
