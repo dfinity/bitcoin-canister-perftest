@@ -549,6 +549,11 @@ impl BlockIngestionStats {
         self.num_rounds
     }
 
+    /// Returns the total instructions used to ingest the block.
+    pub fn get_total_instructions(&self) -> u64 {
+        self.ins_total
+    }
+
     /// Returns the duration in seconds (if timing was captured).
     pub fn get_duration_seconds(&self) -> Option<f64> {
         if self.started_at_nanos > 0 && self.finished_at_nanos >= self.started_at_nanos {

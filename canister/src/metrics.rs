@@ -190,6 +190,16 @@ pub struct TransientMetrics {
     /// Number of unstable blocks traversed per get_utxos request (excludes blocks filtered by
     /// `min_confirmations`).
     pub get_utxos_unstable_blocks_applied: Histogram,
+
+    // Total instruction metrics (across multiple rounds/heartbeats)
+    /// Total instructions to fully ingest a block into the stable UTXO set.
+    pub block_ingestion_total_instructions: Histogram,
+
+    /// Total instructions for a complete fetch sequence (initial + follow-ups).
+    pub fetch_sequence_total_instructions: Histogram,
+
+    /// Number of requests in a fetch sequence (1 for complete, N for partial).
+    pub fetch_sequence_num_requests: Histogram,
 }
 
 impl Default for TransientMetrics {
@@ -224,6 +234,11 @@ impl Default for TransientMetrics {
             // Request context metrics
             get_utxos_utxos_returned: default_get_utxos_utxos_returned(),
             get_utxos_unstable_blocks_applied: default_get_utxos_unstable_blocks_applied(),
+
+            // Total instruction metrics (across multiple rounds/heartbeats)
+            block_ingestion_total_instructions: default_block_ingestion_total_instructions(),
+            fetch_sequence_total_instructions: default_fetch_sequence_total_instructions(),
+            fetch_sequence_num_requests: default_fetch_sequence_num_requests(),
         }
     }
 }
@@ -488,6 +503,34 @@ fn default_get_utxos_unstable_blocks_applied() -> Histogram {
         "get_utxos_unstable_blocks_applied",
         "Number of unstable blocks traversed per get_utxos request (excludes blocks filtered by min_confirmations).",
         logarithmic_buckets(0, 3), // 1 to 1,000 blocks
+    )
+}
+
+// ========================
+// Default functions for total instruction metrics (across multiple rounds)
+// ========================
+
+fn default_block_ingestion_total_instructions() -> Histogram {
+    Histogram::new(
+        "block_ingestion_total_instructions",
+        "Total instructions to fully ingest a block into the stable UTXO set (in billions).",
+        logarithmic_buckets(9, 11), // 1B to 100B instructions
+    )
+}
+
+fn default_fetch_sequence_total_instructions() -> Histogram {
+    Histogram::new(
+        "fetch_sequence_total_instructions",
+        "Total instructions for a complete fetch sequence (in millions).",
+        logarithmic_buckets(6, 9), // 1M to 1B instructions
+    )
+}
+
+fn default_fetch_sequence_num_requests() -> Histogram {
+    Histogram::new(
+        "fetch_sequence_num_requests",
+        "Number of requests in a fetch sequence (1 for complete, N for partial).",
+        logarithmic_buckets(0, 1), // 1 to 10 requests
     )
 }
 

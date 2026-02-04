@@ -2,7 +2,7 @@ use crate::{
     api::get_current_fee_percentiles_impl,
     metrics::with_transient_metrics,
     runtime::{call_get_successors, cycles_burn, performance_counter, print, time},
-    state::{self, ResponseToProcess},
+    state::{self, FetchSequenceStats, ResponseToProcess},
     types::{
         GetSuccessorsCompleteResponse, GetSuccessorsRequest, GetSuccessorsRequestInitial,
         GetSuccessorsResponse,
@@ -111,6 +111,8 @@ async fn maybe_fetch_blocks() -> bool {
             GetSuccessorsRequest::Initial(_) => {
                 stats.initial_count += 1;
                 stats.initial_size += bytes;
+                // Start tracking a new fetch sequence.
+                s.syncing_state.current_fetch_stats = Some(FetchSequenceStats::default());
             }
             GetSuccessorsRequest::FollowUp(_) => {
                 stats.follow_up_count += 1;
@@ -137,19 +139,21 @@ async fn maybe_fetch_blocks() -> bool {
     // Measure instructions after the async call returns (start of post-call sync work).
     let ins_after_async = performance_counter();
 
-    // Save the response.
-    with_state_mut(|s| {
+    // Save the response and track whether the fetch sequence completed.
+    let sequence_completed = with_state_mut(|s| {
         let response = match response {
             Ok(response) => response,
             Err(err) => {
                 s.syncing_state.num_get_successors_rejects += 1;
                 print(&format!("Error fetching blocks: {}", err));
                 s.syncing_state.response_to_process = None;
-                return;
+                // On error, discard the fetch sequence stats.
+                s.syncing_state.current_fetch_stats = None;
+                return false;
             }
         };
 
-        match response {
+        let completed = match response {
             GetSuccessorsResponse::Complete(response) => {
                 // Received complete response.
                 assert!(
@@ -170,6 +174,7 @@ async fn maybe_fetch_blocks() -> bool {
                 stats.total_block_count += count;
                 stats.total_size += bytes;
                 s.syncing_state.response_to_process = Some(ResponseToProcess::Complete(response));
+                true // Sequence completed
             }
             GetSuccessorsResponse::Partial(partial_response) => {
                 // Received partial response.
@@ -192,6 +197,7 @@ async fn maybe_fetch_blocks() -> bool {
                 stats.total_size += bytes;
                 s.syncing_state.response_to_process =
                     Some(ResponseToProcess::Partial(partial_response, 0));
+                false // Sequence not completed yet
             }
             GetSuccessorsResponse::FollowUp(mut block_bytes) => {
                 // Received a follow-up response.
@@ -215,10 +221,13 @@ async fn maybe_fetch_blocks() -> bool {
                 partial_response.partial_block.append(&mut block_bytes);
                 follow_up_index += 1;
 
+                // Check if this is the last follow-up (sequence complete).
+                let is_last_follow_up = follow_up_index == partial_response.remaining_follow_ups;
+
                 // If the response is now complete, store a complete response to process.
                 // Otherwise, store the updated partial response.
                 s.syncing_state.response_to_process = Some(
-                    if follow_up_index == partial_response.remaining_follow_ups {
+                    if is_last_follow_up {
                         ResponseToProcess::Complete(GetSuccessorsCompleteResponse {
                             blocks: vec![partial_response.partial_block],
                             next: partial_response.next,
@@ -227,16 +236,40 @@ async fn maybe_fetch_blocks() -> bool {
                         ResponseToProcess::Partial(partial_response, follow_up_index)
                     },
                 );
+                is_last_follow_up // Sequence completed if this was the last follow-up
             }
         };
+
+        completed
     });
 
     // Measure instructions for post-call synchronous work.
     let ins_post_call = performance_counter() - ins_after_async;
+    let this_request_instructions = ins_pre_call + ins_post_call;
 
-    // Record total synchronous instructions (excludes time spent waiting for async response).
+    // Accumulate instructions in the fetch sequence stats and record if complete.
+    with_state_mut(|s| {
+        if let Some(ref mut fetch_stats) = s.syncing_state.current_fetch_stats {
+            fetch_stats.total_instructions += this_request_instructions;
+            fetch_stats.num_requests += 1;
+        }
+
+        if sequence_completed {
+            // Record the fetch sequence metrics and reset.
+            if let Some(fetch_stats) = s.syncing_state.current_fetch_stats.take() {
+                with_transient_metrics(|m| {
+                    m.fetch_sequence_total_instructions
+                        .observe(fetch_stats.total_instructions as f64);
+                    m.fetch_sequence_num_requests
+                        .observe(fetch_stats.num_requests as f64);
+                });
+            }
+        }
+    });
+
+    // Record per-heartbeat fetch instructions (excludes time spent waiting for async response).
     with_transient_metrics(|m| {
-        m.heartbeat_fetch_blocks.observe(ins_pre_call + ins_post_call);
+        m.heartbeat_fetch_blocks.observe(this_request_instructions);
     });
 
     // A request to fetch new blocks has been made.

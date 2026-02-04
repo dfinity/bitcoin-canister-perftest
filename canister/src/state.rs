@@ -192,6 +192,10 @@ pub fn ingest_stable_blocks_into_utxoset(state: &mut State) -> bool {
             // Record transactions processed in the last round.
             m.ingestion_txs_per_round
                 .observe(stats.get_txs_processed_last_round() as f64);
+
+            // Record total instructions for the entire block ingestion.
+            m.block_ingestion_total_instructions
+                .observe(stats.get_total_instructions() as f64);
         });
     }
 
@@ -363,6 +367,17 @@ pub enum ResponseToProcess {
     Partial(GetSuccessorsPartialResponse, u8),
 }
 
+/// Stats for tracking a fetch sequence (Initial request through Complete response).
+/// This is transient and not persisted across upgrades.
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct FetchSequenceStats {
+    /// Total instructions accumulated for the current fetch sequence.
+    pub total_instructions: u64,
+
+    /// Number of requests in this sequence (1 for complete, N for partial).
+    pub num_requests: u32,
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 pub struct SyncingState {
     /// Whether or not new blocks should be fetched from the network.
@@ -393,6 +408,10 @@ pub struct SyncingState {
     /// NOTE: serde(default) is used here for backward-compatibility.
     #[serde(default)]
     pub get_successors_response_stats: SuccessorsResponseStats,
+
+    /// Stats for the current fetch sequence (transient, not persisted).
+    #[serde(skip)]
+    pub current_fetch_stats: Option<FetchSequenceStats>,
 }
 
 impl Default for SyncingState {
@@ -406,6 +425,7 @@ impl Default for SyncingState {
             num_insert_block_errors: 0,
             get_successors_request_stats: SuccessorsRequestStats::default(),
             get_successors_response_stats: SuccessorsResponseStats::default(),
+            current_fetch_stats: None,
         }
     }
 }

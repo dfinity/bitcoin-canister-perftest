@@ -312,6 +312,11 @@ fn encode_metrics(w: &mut MetricsEncoder<Vec<u8>>) -> std::io::Result<()> {
         encode_histogram(w, &m.get_utxos_utxos_returned)?;
         encode_histogram(w, &m.get_utxos_unstable_blocks_applied)?;
 
+        // Total instruction metrics (across multiple rounds/heartbeats)
+        encode_histogram(w, &m.block_ingestion_total_instructions)?;
+        encode_histogram(w, &m.fetch_sequence_total_instructions)?;
+        encode_histogram(w, &m.fetch_sequence_num_requests)?;
+
         Ok(())
     })
 }
