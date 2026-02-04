@@ -11,6 +11,7 @@ use ic_metrics_encoder::MetricsEncoder;
 use serde_bytes::ByteBuf;
 use std::io;
 
+#[cfg(target_arch = "wasm32")]
 const WASM_PAGE_SIZE: u64 = 65536;
 
 pub fn get_metrics() -> HttpResponse {
@@ -127,7 +128,7 @@ fn encode_metrics(w: &mut MetricsEncoder<Vec<u8>>) -> std::io::Result<()> {
         // Memory
         w.encode_gauge(
             "stable_memory_size_in_bytes",
-            (ic_cdk::stable::stable_size() * WASM_PAGE_SIZE) as f64,
+            get_stable_memory_size_in_bytes(),
             "The size of stable memory in bytes.",
         )?;
         w.encode_gauge(
@@ -375,5 +376,18 @@ fn get_heap_size_in_bytes() -> u64 {
     #[cfg(not(target_arch = "wasm32"))]
     {
         0
+    }
+}
+
+/// Returns the size of the stable memory in bytes.
+fn get_stable_memory_size_in_bytes() -> f64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        (ic_cdk::stable::stable_size() * crate::api::metrics::WASM_PAGE_SIZE) as f64
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        0f64
     }
 }
