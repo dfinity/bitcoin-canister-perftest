@@ -349,6 +349,7 @@ pub struct GetUtxosResponse {
 #[derive(CandidType, Debug, Deserialize, PartialEq, Eq, Clone)]
 pub enum GetUtxosError {
     MalformedAddress,
+    AddressForWrongNetwork { expected: Network },
     MinConfirmationsTooLarge { given: u32, max: u32 },
     UnknownTipBlockHash { tip_block_hash: BlockHash },
     MalformedPage { err: String },
@@ -450,6 +451,13 @@ impl fmt::Display for GetUtxosError {
             Self::MalformedPage { err } => {
                 write!(f, "The provided page is malformed {}", err)
             }
+            Self::AddressForWrongNetwork { expected } => {
+                write!(
+                    f,
+                    "Address does not belong to the expected network: {}",
+                    expected
+                )
+            }
         }
     }
 }
@@ -464,6 +472,7 @@ pub struct GetBalanceRequest {
 #[derive(CandidType, Debug, Deserialize, PartialEq, Eq, Clone)]
 pub enum GetBalanceError {
     MalformedAddress,
+    AddressForWrongNetwork { expected: Network },
     MinConfirmationsTooLarge { given: u32, max: u32 },
 }
 
@@ -478,6 +487,13 @@ impl fmt::Display for GetBalanceError {
                     f,
                     "The requested min_confirmations is too large. Given: {}, max supported: {}",
                     given, max
+                )
+            }
+            Self::AddressForWrongNetwork { expected } => {
+                write!(
+                    f,
+                    "Address does not belong to the expected network: {}",
+                    expected
                 )
             }
         }
@@ -776,6 +792,26 @@ impl Fees {
             get_block_headers_maximum: 10_000_000_000,
         }
     }
+}
+
+/// Information about the blockchain as seen by the canister.
+///
+/// Currently returns information about the main chain tip. The main chain is the
+/// canister's best guess at what the Bitcoin network considers the canonical chain.
+/// It is defined as the longest chain with an "uncontested" tip — meaning there
+/// exists no other block at the same height as the tip.
+#[derive(CandidType, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct BlockchainInfo {
+    /// The height of the main chain tip.
+    pub height: Height,
+    /// The hash of the tip block.
+    pub block_hash: BlockHash,
+    /// Unix timestamp of the tip block (seconds since epoch).
+    pub timestamp: u32,
+    /// Difficulty of the tip block.
+    pub difficulty: u128,
+    /// Total number of UTXOs up to the main chain tip (stable + unstable main chain blocks).
+    pub utxos_length: u64,
 }
 
 #[cfg(test)]

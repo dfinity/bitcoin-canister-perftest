@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 
-# Function to deploy the watchdog canister for mainnet bitcoin_canister.
+# Configure dfx.json to use pre-built WASM from wasms/ when present (e.g. in CI).
+# When wasms/ is not present (local dev), dfx.json is left unchanged and the build step runs.
+use_prebuilt_watchdog_wasm() {
+  if [[ -f ../../wasms/watchdog.wasm.gz ]]; then
+    sed -i.bak 's|"wasm": "../../target/wasm32-unknown-unknown/release/watchdog.wasm.gz"|"wasm": "../../wasms/watchdog.wasm.gz"|' dfx.json
+  fi
+}
+
+# Function to deploy the watchdog canister for mainnet bitcoin_canister using pre-built WASM.
 deploy_watchdog_canister_bitcoin_mainnet() {
+  use_prebuilt_watchdog_wasm
   dfx deploy --no-wallet watchdog --argument "(variant { init = record { target = (variant { bitcoin_mainnet } ) } } )"
 }
 

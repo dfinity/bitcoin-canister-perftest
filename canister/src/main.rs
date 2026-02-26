@@ -1,8 +1,9 @@
 use ic_btc_canister::types::{HttpRequest, HttpResponse};
+use ic_btc_canister::CanisterArg;
 use ic_btc_interface::{
     Config, GetBalanceRequest, GetBlockHeadersRequest, GetBlockHeadersResponse,
-    GetCurrentFeePercentilesRequest, GetUtxosRequest, GetUtxosResponse, InitConfig,
-    MillisatoshiPerByte, Satoshi, SendTransactionRequest, SetConfigRequest,
+    GetCurrentFeePercentilesRequest, GetUtxosRequest, GetUtxosResponse, MillisatoshiPerByte,
+    Satoshi, SendTransactionRequest, SetConfigRequest,
 };
 use ic_cdk::{
     api::{msg_reject, msg_reply},
@@ -19,9 +20,16 @@ fn hook() {
 }
 
 #[init]
-fn init(init_config: InitConfig) {
+fn init(canister_arg: CanisterArg) {
     hook();
-    ic_btc_canister::init(init_config);
+    match canister_arg {
+        CanisterArg::Init(init_config) => {
+            ic_btc_canister::init(init_config);
+        }
+        CanisterArg::Upgrade(_) => {
+            panic!("expected Init arguments got Upgrade arguments");
+        }
+    }
 }
 
 #[pre_upgrade]
@@ -30,8 +38,17 @@ fn pre_upgrade() {
 }
 
 #[post_upgrade]
-fn post_upgrade(config_update: Option<SetConfigRequest>) {
+fn post_upgrade(canister_arg: Option<CanisterArg>) {
     hook();
+    let mut config_update: Option<SetConfigRequest> = None;
+    if let Some(canister_arg) = canister_arg {
+        config_update = match canister_arg {
+            CanisterArg::Init(_) => {
+                panic!("expected Upgrade arguments got Init arguments");
+            }
+            CanisterArg::Upgrade(args) => args,
+        }
+    }
     ic_btc_canister::post_upgrade(config_update);
 }
 
@@ -122,6 +139,11 @@ fn set_config(request: SetConfigRequest) {
 }
 
 #[query]
+pub fn get_blockchain_info() -> ic_btc_canister::types::BlockchainInfo {
+    ic_btc_canister::get_blockchain_info()
+}
+
+#[query]
 pub fn http_request(request: HttpRequest) -> HttpResponse {
     ic_btc_canister::http_request(request)
 }
@@ -151,6 +173,9 @@ fn main() {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{init, post_upgrade};
+    use ic_btc_canister::CanisterArg;
+    use ic_btc_interface::{InitConfig, SetConfigRequest};
 
     #[test]
     fn test_candid_interface_compatibility() {
@@ -168,5 +193,17 @@ mod tests {
             CandidSource::File(candid_interface.as_path()),
         )
         .expect("The canister implementation is not compatible with the candid.did file");
+    }
+
+    #[test]
+    #[should_panic]
+    fn init_panics_with_upgrade_args() {
+        init(CanisterArg::Upgrade(Some(SetConfigRequest::default())));
+    }
+
+    #[test]
+    #[should_panic]
+    fn upgrade_panics_with_init_args() {
+        post_upgrade(Some(CanisterArg::Init(InitConfig::default())));
     }
 }
