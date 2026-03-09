@@ -29,6 +29,7 @@ pub use api::send_transaction;
 pub use api::set_config;
 use candid::{CandidType, Deserialize};
 pub use heartbeat::heartbeat;
+pub use ic_btc_interface::CanisterArg;
 use ic_btc_interface::{
     Config, Flag, GetBalanceError, GetBalanceRequest, GetBlockHeadersError, GetBlockHeadersRequest,
     GetBlockHeadersResponse, GetCurrentFeePercentilesRequest, GetUtxosError, GetUtxosRequest,
